@@ -11,17 +11,21 @@ import numpy as np
 from PIL import Image
 from io import BytesIO
 import math
+import re
 
 from functools import partial
 import cv2
 
 class YugiohVideoMaker:
-    def __init__(self, card_name=None, voice_id="PRESTIGED", bg_audio:int=None, card_effect=None, card_readable_type=None, card_img=None, card_type=None) -> None:
+    def __init__(self, card_name=None, voice_id="PRESTIGED", bg_audio:int=None, card_effect=None, card_readable_type=None, card_img=None, card_type=None, card_atk = None, card_def = None) -> None:
         self.card_name = card_name
         self.card_effect = card_effect
         self.card_readable_type = card_readable_type
         self.card_img = card_img
         self.card_type = card_type
+        self.card_atk = card_atk
+        self.card_def = card_def
+
         self.prompt = None
         self.script = None
         self.audio = None
@@ -56,30 +60,73 @@ class YugiohVideoMaker:
         self.load_card_details(card_name)
 
     def load_card_details(self, card_name=None):
-
-        existing_audio = os.path.join('src','audio', f"{self.card_name}.mp3")
-        if os.path.isfile(existing_audio):
+        existing_audio = os.path.join('src', 'audio', f"{self.card_name}.mp3") if self.card_name else None
+        
+        if existing_audio and os.path.isfile(existing_audio):
             print(f"🟡 {self.card_name} audio already exists.")
-            cont = input("❓ Would you like to reuse details with that audio? (y/n) ")
+            cont = input("❓ Would you like to reuse that audio? (y/n) ")
+
             if cont == "y":
                 print("✅ Continuing with existing data")
-            else:
-                if self.card_name and self.card_img and self.card_type and self.card_readable_type and self.card_effect:
-                    print("✅ Details already loaded")
-                    self.card_img = Image.open(BytesIO(requests.get(self.card_img).content))
-                else:
-                    self.prompt = f"Write me an engaging YouTube short script based on this YuGiOh card, explaining what it does. Follow this formula exactly, do not add any extra text beyond what I specifically ask for, and write at least three sentences: [Name] is a [Card Type] that {{summarize the [Effect]}} Stay semi-neutral in nature, but be engaging. Avoid being corny. Also, keep vocabulary failry basic and easy to understand, do not use words like 'formidable' instead opt for words like 'strong', etc. Rules: Replace all numbers with their fully spelled-out form. Example: {{four}} instead of {{4}}. If a card says {{ATK}} replace it with {{attack}} or {{DEF}} replace it with {{defense}} Stick to the structure given without adding extra commentary. Card details: Name = {self.card_name} Card Type = {self.card_readable_type} Effect = {self.card_effect}"
-                    self.get_script()
+                card_img = Image.open(BytesIO(requests.get(self.card_img).content))
+                self.card_img = np.array(card_img)
+                return
 
-        card = self.get_card(card_name)
-        self.card_name = card["name"]
-        self.card_readable_type = card["humanReadableCardType"]
-        self.card_effect = card["desc"]
-        self.card_type = card["type"]
-        card_img = Image.open(BytesIO(requests.get(card["card_images"][0]["image_url"]).content))
+        # Load card details if they haven't already been set
+        if not all([self.card_name, self.card_img, self.card_type, self.card_readable_type, self.card_effect]):
+            card = self.get_card(card_name)
+            self.card_name = card["name"]
+            self.card_readable_type = card["humanReadableCardType"]
+            self.card_effect = card["desc"]
+            self.card_type = card["type"]
+            self.card_img = card["card_images"][0]["image_url"]
+            
+        card_img = Image.open(BytesIO(requests.get(self.card_img).content))
         self.card_img = np.array(card_img)
 
+        self.get_prompt()
+        self.get_script()
         print(f"✅ Loaded card: {self.card_name}")
+
+
+    def get_prompt(self):
+        self.prompt = f"""
+        Write an engaging YouTube Short script about this Yu-Gi-Oh! card, explaining what it does.
+
+        - If the {self.card_readable_type} is a **Normal Monster**, follow this format:
+        "[Name] is a [Card Type] whose flavor text reads, {{read the [Effect] word for word}}"
+
+        - Otherwise, use this structure without extra commentary—stick to describing the card:
+        "[Name] is a [Card Type] that {{summarize the [Effect]}}"
+
+        ### Rules:
+        1. Keep the tone semi-neutral and engaging—**avoid being corny**.
+        2. Use **simple, easy-to-understand vocabulary** (e.g., "strong" instead of "formidable").
+        3. **Spell out numbers fully** (e.g., "four" instead of "4").
+        4. Replace:
+        - **ATK → attack**
+        - **DEF → defense**
+        5. **Pronunciation Rules (FOLLOW THESE STRICTLY):**  
+        - If the [Effect] and/or [Card Type] contains **"Xyz"**, rewrite it as **"ekseez"**.  
+        - If **"XYZ"** appears in the card [Name], **leave it unchanged**.  
+        - **If the card [Name] starts with "CXyz", rewrite it as "see ekseez"—NEVER say "CXyz"**. You MUST follow this rule exactly.  
+        6. Never refer to a **Monster** card as a "creature"—**always use "monster"**.
+        7. If the [Card Type] is a Fusion, Synchro, Xyz, Ritual, Pendulum, or Link monster and the only text in the [Effect] is summoning requirements (e.g., "Blue-Eyes White Dragon + Blue-Eyes White Dragon" and nothing else), mention only its **attack** and **defense**.
+        8. If the [Card Type] is a Spell/Trap, **do not mention attack or defense**.
+        9. **Name Formatting Rules (FOLLOW THESE STRICTLY):**  
+        - **Remove all special characters** from the [Name] in spoken output.  
+            - Example: "Danger!? Tsuchinoko?" → "Danger Tsuchinoko".  
+        - **Replace "&" with "and".**  
+            - Example: "Ash & Leo" → "Ash and Leo".  
+        - **If the card [Name] contains "LV", rewrite it as "level".**  
+            - Example: "Armed Dragon LV10" → "Armed Dragon Level Ten".  
+        10. **Do not ignore or alter these rules. These are mandatory replacements.**  
+
+        ### Card Details:
+        - **Name** = {self.card_name}
+        - **Card Type** = {self.card_readable_type}
+        - **Effect** = {self.card_effect}
+        """
 
     def get_card(self, card_name=None):
 
@@ -106,10 +153,10 @@ class YugiohVideoMaker:
             if cont == "y":
                 return response["data"][0]
             else:
-                return None
+                exit()
 
 
-    def get_script(self, background_audio=None): 
+    def get_script(self): 
         print(f"🔃 Getting script for {self.card_name}")
         if self.card_name == None or self.card_effect == None or self.card_readable_type == None or self.prompt == None: 
             raise Exception("Error, make sure card data is retrieved before function call")
@@ -126,11 +173,6 @@ class YugiohVideoMaker:
         self.script = script
         print("✅ Script received from ChatGPT")
 
-        # print_script = input("Would you like to print the script? (y/n) ")
-
-        # if print_script == "y":
-        #     print(self.script)
-
     def get_audio(self):
         audio_stream = self.elevenlabs_client.text_to_speech.convert(
         voice_id=self.voice_ids["PRESTIGED"],
@@ -146,8 +188,9 @@ class YugiohVideoMaker:
         
         if not os.path.exists('assets'):
             os.makedirs('assets')
-
-        output_path = os.path.join('src', 'audio', f"{self.card_name}.mp3")
+        
+        audio_name = re.sub(r'[<>:"/\\|?*]', ' ', self.card_name)
+        output_path = os.path.join('src', 'audio', f"{audio_name}.mp3")
 
         with open(output_path, "wb") as f:
             for chunk in audio_stream:
@@ -161,18 +204,16 @@ class YugiohVideoMaker:
     rotation_end=0, flip_duration_ratio=0.03, start_scale=0.4,            # card starts at 30% of full size
     end_scale=0.7
     ):
-        existing_audio = os.path.join('src','audio', f"{self.card_name}.mp3")
-        if os.path.isfile(existing_audio):
-            print(f"🟡 {self.card_name} audio already exists.")
-            cont = input("❓ Would you like to continue and make a video with that audio? (y/n) ")
-            if cont == "y":
-                script_audio = existing_audio
-            else:
-                print("❌ Exiting")
-                return -1
-        else:
+        audio_name = re.sub(r'[<>:"/\\|?*]', ' ', self.card_name)
+        existing_audio = os.path.join('src', 'audio', f"{audio_name}.mp3")
+        if not os.path.isfile(existing_audio):
+            # If the file doesn't exist, generate it.
             script_audio = self.get_audio()
+        else:
+            # Use the existing audio file.
+            script_audio = existing_audio
 
+        # Now create an AudioFileClip from the determined path.
         script_audio = AudioFileClip(script_audio)
         video_duration = script_audio.duration
 
@@ -258,8 +299,10 @@ class YugiohVideoMaker:
                                   ).with_audio(full_audio)
 
         # comp.preview(fps=30, audio=True, audio_fps=22050, audio_buffersize=3000, audio_nbytes=2)
+        video_name = re.sub(r'[<>:"/\\|?*]', ' ', self.card_name)  # Replaces invalid characters with a space
+        video_name = video_name.strip()  # Removes any leading or trailing spaces
 
-        comp.write_videofile(f"./src/videos/{self.card_name}.mp4", codec="libx264",  # H.264 codec
+        comp.write_videofile(f"./src/videos/{video_name}.mp4", codec="libx264",  # H.264 codec
             audio_codec="aac",  # Audio codec
             threads=4,  # Set number of threads (optional)
             ffmpeg_params=[
@@ -271,3 +314,8 @@ class YugiohVideoMaker:
         )
 
         print(f"✅ Video created for {self.card_name}")
+
+if __name__ == "__main__":
+    name = input("Enter yugioh card name: ")
+    v = YugiohVideoMaker(name)
+    v.create_video()

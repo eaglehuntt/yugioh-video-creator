@@ -36,14 +36,24 @@ def create_videos():
             card_readable_type = card["humanReadableCardType"]
             card_type = card["type"]
             card_name = card["name"]
-            image_url = card["card_images"][0]  # Get first image set
-        
+            image_url = card["card_images"][0]["image_url"]  # Get first image set
+            
+            if "Monster" in card_readable_type:
+                card_atk = card["atk"]
+                card_def = card["def"]
+            else:
+                card_atk = None
+                card_def = None
+
             # Create a YuGiOhVideoMaker object and generate a video
             video_maker = YugiohVideoMaker(
                 card_name=card_name,
                 card_effect=card_effect,
                 card_readable_type=card_readable_type,
                 card_img=image_url,
+                card_type=card_type,
+                card_atk=card_atk,
+                card_def=card_def
             )
             
             video_maker.create_video()  # Assuming this method exists

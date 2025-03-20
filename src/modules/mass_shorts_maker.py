@@ -1,6 +1,7 @@
 import os
 import subprocess
 import cv2
+import time
 import mass_video_maker
 
 def convert_to_short(input_path, output_path):
@@ -31,52 +32,53 @@ def convert_to_short(input_path, output_path):
         output_path  # Output file
     ]
     
-    # Run the FFmpeg command
-    subprocess.run(command)
-
+    # Run the FFmpeg command and capture errors
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"❌ FFmpeg error: {result.stderr}")
+    else:
+        print(f"✅ Created short: {output_path}")
 
 def process_videos():
     """Processes all videos in the input folder to create Shorts."""
-
+    
     video_folder = os.path.join('src', 'videos')
-    # Create 'shorts' folder if it doesn't exist
-    shorts_folder = os.path.join('src', 'shorts')
-    if not os.path.exists(shorts_folder):
-        os.makedirs(shorts_folder)
+    # Ensure the local shorts folder exists (even though final output is in Google Drive)
+    local_shorts_folder = os.path.join('src', 'shorts')
+    os.makedirs(local_shorts_folder, exist_ok=True)
 
-    # Loop through all files in the input folder
     for filename in os.listdir(video_folder):
-        if filename.endswith(".mp4"):
+        if filename.lower().endswith(".mp4"):
             input_path = os.path.join(video_folder, filename)
 
-            # Check if we've already made a short for this video
-            short_output_path = os.path.join(shorts_folder, f"{filename}")
-            if os.path.exists(short_output_path):
-                print(f"Short for {filename} already exists.")
-                continue
+            # Define the two Google Drive paths to check for an existing short.
+            drive_shorts_path = os.path.join("G:\\My Drive\\Prestiged\\Shorts", filename)
+            posted_shorts_path = os.path.join("G:\\My Drive\\Prestiged\\Posted Shorts", filename)
 
-            # If no short exists, create one
-            print(f"Converting {filename} to a short...")
-            convert_to_short(input_path, short_output_path)
-            print(f"Created short: {short_output_path}")
+            # Check if the file already exists in either location.
+            if os.path.exists(drive_shorts_path) or os.path.exists(posted_shorts_path):
+                print(f"⚠️ Short for {filename} already exists in Google Drive. Skipping.")
+                continue
+            
+            # If the short doesn't exist in either location, create it.
+            print(f"🎬 Converting {filename} to a short...")
+            convert_to_short(input_path, drive_shorts_path)
+
+            # Delay to account for potential Google Drive sync issues.
+            time.sleep(2)
 
 def create_shorts():
     mass_video_maker.create_videos()
 
-
 if __name__ == "__main__":
-    # Specify the folder with your videos here
-
-    create_shorts_command = input("Would you like to create shorts? (y/n) ")
+    create_shorts_command = input("Would you like to create shorts? (y/n) ").strip().lower()
 
     if create_shorts_command == "y":
         create_shorts()
         process_videos()
         print("✅ Shorts created")
     else:
-        just_process = input("Would you like to just process videos? (y/n) ")
+        just_process = input("Would you like to just process videos? (y/n) ").strip().lower()
         if just_process == "y":
             process_videos()
             print("✅ Videos processed")
-
-    
