@@ -175,3 +175,7 @@ secrets.json
 .mp3
 
 src/audio
+src/videos
+src/shorts
+ai_tests
+asset/
