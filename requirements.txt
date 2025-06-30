@@ -1,0 +1,10 @@
+openai>=1.0.0
+elevenlabs>=0.2.0
+moviepy>=1.0.3
+opencv-python>=4.8.0
+pillow>=10.0.0
+numpy>=1.24.0
+requests>=2.31.0
+torch>=2.0.0
+torchaudio>=2.0.0
+ChatTTS>=0.0.1 
