@@ -1,0 +1,7 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_CLASSES_ROOT\*\shell\ConvertToShort]
+@="Convert to Short"
+
+[HKEY_CLASSES_ROOT\*\shell\ConvertToShort\command]
+@="\"C:\\Users\\Eagle\\AppData\\Local\\Programs\\Python\\Python311\\python.exe\" \"C:\\Users\\Eagle\\yugioh-video-creator\\src\\utils\\crop_to_short.py\" \"%1\""
