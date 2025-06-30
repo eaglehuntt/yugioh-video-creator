@@ -180,7 +180,7 @@ The default voice ID is "PRESTIGED" (ElevenLabs voice). You can modify voice set
 
 ```python
 self.voice_ids = {
-    "PRESTIGED": "ijEuPMqoI2gEEA41kGv3"
+    "name": "key"
 }
 ```
 
