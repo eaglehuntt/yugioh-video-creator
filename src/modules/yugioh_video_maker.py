@@ -26,7 +26,6 @@ class YugiohVideoMaker:
         self.card_atk = card_atk
         self.card_def = card_def
 
-        self.prompt = None
         self.script = None
         self.audio = None
         self.bg_audio = bg_audio
@@ -57,7 +56,7 @@ class YugiohVideoMaker:
             api_key = self.secrets["elevenlabs_api_key"],
         )
 
-        self.load_card_details(card_name)
+        self.load_card_details(card_name) # we need to load card details before setting the prompt
 
     def load_card_details(self, card_name=None):
         existing_audio = os.path.join('src', 'audio', f"{self.card_name}.mp3") if self.card_name else None
@@ -84,20 +83,22 @@ class YugiohVideoMaker:
         card_img = Image.open(BytesIO(requests.get(self.card_img).content))
         self.card_img = np.array(card_img)
 
-        self.get_prompt()
-        self.get_script()
         print(f"✅ Loaded card: {self.card_name}")
 
 
-    def get_prompt(self):
-        self.prompt = f"""
-        Write an engaging YouTube Short script about this Yu-Gi-Oh! card, explaining what it does.
+
+    def get_prompt(self, context=None, adjustments=None):
+        return f"""
+        Write an engaging YouTube Short script about this Yu-Gi-Oh! card, explaining what it does. I may provide you with optional context that you should use to make the script more engaging. IF I don't provide any context, just follow the base script.
+
+        ### Base Script (Mandatory Formatting):
+        Follow this structure when generating the script:
 
         - If the {self.card_readable_type} is a **Normal Monster**, follow this format:
-        "[Name] is a [Card Type] whose flavor text reads, {{read the [Effect] word for word}}"
+        "[Name] is a [Card Type] whose flavor text reads, {{read the [Effect] word for word}}."
 
         - Otherwise, use this structure without extra commentary—stick to describing the card:
-        "[Name] is a [Card Type] that {{summarize the [Effect]}}"
+        "[Name] is a [Card Type] that {{summarize the [Effect]}}."
 
         ### Rules:
         1. Keep the tone semi-neutral and engaging—**avoid being corny**.
@@ -106,26 +107,36 @@ class YugiohVideoMaker:
         4. Replace:
         - **ATK → attack**
         - **DEF → defense**
-        5. **Pronunciation Rules (FOLLOW THESE STRICTLY):**  
-        - If the [Effect] and/or [Card Type] contains **"Xyz"**, rewrite it as **"ekseez"**.  
-        - If **"XYZ"** appears in the card [Name], **leave it unchanged**.  
-        - **If the card [Name] starts with "CXyz", rewrite it as "see ekseez"—NEVER say "CXyz"**. You MUST follow this rule exactly.  
-        6. Never refer to a **Monster** card as a "creature"—**always use "monster"**.
-        7. If the [Card Type] is a Fusion, Synchro, Xyz, Ritual, Pendulum, or Link monster and the only text in the [Effect] is summoning requirements (e.g., "Blue-Eyes White Dragon + Blue-Eyes White Dragon" and nothing else), mention only its **attack** and **defense**.
-        8. If the [Card Type] is a Spell/Trap, **do not mention attack or defense**.
-        9. **Name Formatting Rules (FOLLOW THESE STRICTLY):**  
-        - **Remove all special characters** from the [Name] in spoken output.  
-            - Example: "Danger!? Tsuchinoko?" → "Danger Tsuchinoko".  
-        - **Replace "&" with "and".**  
-            - Example: "Ash & Leo" → "Ash and Leo".  
-        - **If the card [Name] contains "LV", rewrite it as "level".**  
-            - Example: "Armed Dragon LV10" → "Armed Dragon Level Ten".  
-        10. **Do not ignore or alter these rules. These are mandatory replacements.**  
+        5. **Pronunciation Rules (FOLLOW THESE STRICTLY):**
+        - If the [Effect] and/or [Card Type] contains **"Xyz"**, rewrite it as **"ekseez."**
+        - If **"XYZ"** appears in the card [Name], **leave it unchanged**.
+        - **If the card [Name] starts with "CXyz", rewrite it as "see ekseez"—NEVER say "CXyz".**
+        6. Never refer to a **Monster** card as a "creature"—**always use "monster."**
+        7. If the [Card Type] is a Fusion, Synchro, Xyz, Ritual, Pendulum, or Link monster and the only text in the [Effect] is summoning requirements, mention only its **attack** and **defense.**
+        8. If the [Card Type] is a Spell/Trap, **do not mention attack or defense.**
 
+        9. **Name Formatting Rules (FOLLOW THESE STRICTLY):**
+        - **Remove all special characters** from the [Name] in spoken output.
+            - Example: "Danger!? Tsuchinoko?" → "Danger Tsuchinoko."
+        - **Replace "&" with "and."**
+            - Example: "Ash & Leo" → "Ash and Leo."
+        - **If the card [Name] contains "LV", rewrite it as "level."**
+            - Example: "Armed Dragon LV10" → "Armed Dragon Level Ten."
+
+        10. **Do not ignore or alter these rules. These are mandatory replacements.**
+        11. **If I provide you with adjustments, that means you have already written a script and it was bad. Keep those adjustments in mind when writing the next script.**
+
+        ---
         ### Card Details:
-        - **Name** = {self.card_name}
-        - **Card Type** = {self.card_readable_type}
-        - **Effect** = {self.card_effect}
+        Name: {self.card_name}
+        Effect: {self.card_effect}
+        Card Type: {self.card_readable_type}
+
+        ### Optional Context:
+        {context}
+
+        ### Adjustments:
+        {adjustments}
         """
 
     def get_card(self, card_name=None):
@@ -156,24 +167,33 @@ class YugiohVideoMaker:
                 exit()
 
 
-    def get_script(self): 
+    def get_script_from_chatgpt(self, prompt=None, gpt_model="gpt-4o-mini"): 
+        if prompt == None:
+            prompt = self.get_prompt()
+
         print(f"🔃 Getting script for {self.card_name}")
-        if self.card_name == None or self.card_effect == None or self.card_readable_type == None or self.prompt == None: 
+        if self.card_name == None or self.card_effect == None or self.card_readable_type == None or prompt == None: 
             raise Exception("Error, make sure card data is retrieved before function call")
         
         chat_completion = self.client.chat.completions.create(
             messages=[
                 {
                     "role" : "user",
-                    "content" : self.prompt
+                    "content" : prompt
                 }
-            ], model="gpt-4o-mini",
+            ], model=gpt_model,
         )
         script = chat_completion.choices[0].message.content
-        self.script = script
         print("✅ Script received from ChatGPT")
-
+        return script
+    
+    def set_script(self, script=None):
+        self.script = script
+    
     def get_audio(self):
+        if not self.script:
+            raise Exception("Error, make sure script is set before function call")
+        
         audio_stream = self.elevenlabs_client.text_to_speech.convert(
         voice_id=self.voice_ids["PRESTIGED"],
         output_format="mp3_44100_128",
@@ -315,7 +335,40 @@ class YugiohVideoMaker:
 
         print(f"✅ Video created for {self.card_name}")
 
+    def setup_video(self, manual_script="n", context="n", skip_script_check=True):
+        if manual_script != "n":
+            manual_script = input("Would you like to provide a manual script? (y/n) ")
+            if manual_script == "y":
+                script = input("Enter script: ")
+                self.set_script(script)
+        else:
+            if context != "n":
+                add_context = input("Would you like to provide context? (y/n) ")
+                if add_context == "y":
+                    context = input("Enter context: ")
+                prompt = self.get_prompt(context=context)
+            else:
+                prompt = self.get_prompt()
+
+            # script quality check
+            if not skip_script_check:
+                quality = False
+                script = self.get_script_from_chatgpt(prompt)
+
+                while not quality:
+                    print(script)
+                    good_script = input("Is this script good? (y/n) ")
+                    if good_script == "y":
+                        self.set_script(script)
+                        quality = True
+                    else:
+                        adjustments = input("Enter adjustments: ")
+                        prompt = self.get_prompt(context=context, adjustments=adjustments)
+                        script = self.get_script_from_chatgpt(prompt)
+        
+        self.create_video()
+
 if __name__ == "__main__":
     name = input("Enter yugioh card name: ")
     v = YugiohVideoMaker(name)
-    v.create_video()
+    v.setup_video(manual_script="y", context="y", skip_script_check=False)
